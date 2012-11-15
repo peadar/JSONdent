@@ -339,7 +339,7 @@ escape(std::string in)
                 if (unsigned(c) < 32) {
                     o << "\\u" << std::hex << unsigned(c);
                 } else if (c & 0x80) {
-                    // multibyte UTF-8
+                    // multibyte UTF-8: build up the unicode codepoint.
                     unsigned long v = c;
                     int count = 0;
                     for (int mask = 0x80; mask & v; mask >>= 1) {
@@ -350,7 +350,7 @@ escape(std::string in)
                     }
                     while (--count) {
                         c = (unsigned char)*i++;
-                        if (c & 0xc0 != 0x80)
+                        if ((c & 0xc0) != 0x80)
                             throw InvalidJSON("illegal character in multibyte sequence");
                         v = (v << 6) | (c & 0x3f);
                     }
