@@ -1,3 +1,4 @@
+#!/bin/sh
 # set -e
 while read filename
 do
