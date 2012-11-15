@@ -1,7 +1,14 @@
-CXXFLAGS = -g -I. -std=c++0x -O3
-all: indent
+CXXFLAGS ?= -g -I. -std=c++0x -O3
+PREFIX ?= /usr/local
+EXE ?= jdent
 
+all: $(EXE)
 
-indent: indent.cc json.h
+$(EXE): indent.cc json.h
 	c++ $(CXXFLAGS) -o $@ indent.cc
 
+install:
+	cp $(EXE) $(PREFIX)/bin
+
+clean:
+	rm -f $(EXE) *.o core
