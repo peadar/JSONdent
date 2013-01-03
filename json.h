@@ -318,15 +318,17 @@ parseArray(std::istream &l, Context &&ctx)
     }
 }
 
-inline std::string
-escape(std::string in)
+struct Escape {
+    std::string value;
+    Escape(std::string value_) : value(value_) { }
+};
+
+inline std::ostream & operator << (std::ostream &o, const Escape &escape)
 {
-    std::ostringstream o;
-    for (auto i = in.begin(); i != in.end();) {
+    auto flags(o.flags());
+    for (auto i = escape.value.begin(); i != escape.value.end();) {
         int c;
-
         switch (c = (unsigned char)*i++) {
-
             case '\b': o << "\\b"; break;
             case '\f': o << "\\f"; break;
             case '\n': o << "\\n"; break;
@@ -334,7 +336,6 @@ escape(std::string in)
             case '\\': o << "\\\\"; break;
             case '\r': o << "\\r"; break;
             case '\t': o << "\\t"; break;
-
             default:
                 if (unsigned(c) < 32) {
                     o << "\\u" << std::hex << unsigned(c);
@@ -360,9 +361,9 @@ escape(std::string in)
                 }
                 break;
         }
-
     }
-    return o.str();
+    o.flags(flags);
+    return o;
 }
 
 }
