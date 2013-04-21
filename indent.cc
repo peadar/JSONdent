@@ -38,7 +38,7 @@ prettyObject(istream &i, ostream &o, size_t indent)
     parseObject(i, [=, &eleCount, &o] (istream &i, string idx) -> void {
         if (eleCount++ != 0)
             o << ", ";
-        o << "\n" << pad(indent + 1) << "\"" << escape(idx) << "\": ";
+        o << "\n" << pad(indent + 1) << "\"" << Escape(idx) << "\": ";
         pretty<numtype>(i, o, indent + 1);
     });
     if (eleCount)
@@ -49,7 +49,7 @@ prettyObject(istream &i, ostream &o, size_t indent)
 static void
 prettyString(istream &i, ostream &o, size_t indent)
 {
-    o << "\"" << escape(parseString(i)) << "\"";
+    o << "\"" << Escape(parseString(i)) << "\"";
 }
 
 static void
