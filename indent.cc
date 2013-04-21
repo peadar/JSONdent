@@ -2,6 +2,7 @@
 #include <fstream>
 #include <cstring>
 #include <iostream>
+#include <unistd.h>
 
 using namespace JSON;
 using namespace std;

@@ -1,4 +1,4 @@
-CXXFLAGS ?= -g -I. -std=c++0x
+CXXFLAGS ?= -g -I. -std=c++0x -O3
 PREFIX ?= /usr/local
 EXE ?= jdent
 

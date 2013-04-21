@@ -256,7 +256,7 @@ static inline void // Parse any value but discard the result.
 parseValue(std::istream &l)
 {
     switch (peekType(l)) {
-        case Array: parseArray(l, [](std::istream &l) -> void { parseValue(l); }); break;
+        case Array: parseArray(l, parseValue); break;
         case Boolean: parseBoolean(l); break;
         case Null: parseNull(l); break;
         case Number: parseNumber<float>(l); break;
@@ -364,6 +364,15 @@ escape(std::string in)
     }
     return o.str();
 }
+
+template <typename Parsee> void parse(std::istream &is, Parsee &);
+template <> void parse<int>(std::istream &is, int &parsee) { parsee = parseInt<int>(is); }
+template <> void parse<long>(std::istream &is, long &parsee) { parsee = parseInt<long>(is); }
+template <> void parse<float>(std::istream &is, float &parsee) { parsee = parseFloat<float>(is); }
+template <> void parse<double>(std::istream &is, double &parsee) { parsee = parseFloat<double>(is); }
+template <> void parse<std::string>(std::istream &is, std::string &parsee) { parsee = parseString(is); }
+template <> void parse<bool>(std::istream &is, bool &parsee) { parsee = parseBoolean(is); }
+
 
 }
 
