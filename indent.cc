@@ -23,7 +23,7 @@ prettyArray(istream &i, ostream &o, size_t indent)
     o << "[";
     size_t eleCount = 0;
     parseArray(i, [=, &eleCount, &o] (istream &i) -> void {
-        o << (eleCount++ ? ", " : "") << "\n" << pad(indent + 1);
+        o << (eleCount++ ? "," : "") << "\n" << pad(indent + 1);
         pretty<numtype>(i, o, indent+1);
     });
     if (eleCount)
