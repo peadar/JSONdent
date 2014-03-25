@@ -14,7 +14,8 @@ const char *pad(size_t indent) {
     return spaces + maxindent - indent;
 }
 
-template <typename numtype> static void pretty(istream &i, ostream &o, size_t indent);
+template <typename numtype>
+static void pretty(istream &i, ostream &o, size_t indent);
 
 template <typename numtype> void
 prettyArray(istream &i, ostream &o, size_t indent)
@@ -37,7 +38,7 @@ prettyObject(istream &i, ostream &o, size_t indent)
     int eleCount = 0;
     parseObject(i, [=, &eleCount, &o] (istream &i, string idx) -> void {
         if (eleCount++ != 0)
-            o << ", ";
+            o << ",";
         o << "\n" << pad(indent + 1) << "\"" << Escape(idx) << "\": ";
         pretty<numtype>(i, o, indent + 1);
     });
@@ -123,14 +124,12 @@ main(int argc, char *argv[])
 {
     cin.tie(0);
     int c;
-
     while ((c = getopt(argc, argv, "f")) != -1) {
         switch (c) {
             case 'f': doFloat = true; break;
             default: return usage();
         }
     }
-
     bool good = true;
     for (int i = optind; i < argc; ++i) {
         if (strcmp(argv[i], "-") != 0) {
@@ -139,7 +138,8 @@ main(int argc, char *argv[])
             if (inFile.good())
                 good = good && indent(inFile, cout);
             else
-                clog << "failed to open " << argv[i] << ": " << strerror(errno) << endl;
+                clog << "failed to open " << argv[i]
+                        << ": " << strerror(errno) << endl;
         } else {
             good = good && indent(cin, cout);
         }
