@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <map>
 #include <vector>
+#include <list>
 
 namespace JSON {
 
@@ -20,6 +21,20 @@ public:
 };
 
 enum Type { Array, Boolean, Null, Number, Object, String, Eof, JSONTypeCount };
+
+class NullType {};
+
+class Number {
+    signed char sign; // -1 or + 1
+    struct {
+        long integer;
+        long fraction;
+    } mantissa;
+
+    unsigned long exponent;
+    operator long () { return (long)integer * sign; }
+    operator double () { return (long)mantissa * sign * pow(10, exponent); }
+};
 
 template <typename In> int
 skipSpace(In &l)
@@ -103,10 +118,11 @@ parseInt(In &l)
  * integral.
  */
 
-template <typename In, typename FloatType> static inline FloatType
-parseFloat(In &l)
+template <typename In, typename FloatType> static inline NumberType
+parseNumber(In &l)
 {
-    FloatType rv = parseInt<In, FloatType>(l);
+    NumberType rv;
+    rv.mantissa = parseInt<In, FloatType>(l);
     if (l.peek() == '.') {
         l.ignore();
         FloatType scale = rv < 0 ? -1 : 1;
@@ -150,27 +166,32 @@ static inline int hexval(char c)
 struct UTF8 {
     unsigned long code;
     UTF8(unsigned long code_) : code(code_) {}
-    UTF8(const char *&ptr, size_t max) {
-        const char *end = ptr + max;
-        int c = *(unsigned char *)ptr;
+
+    template <typename Iter>
+    UTF8(Iter &pos, const Iter &end) {
+
+        if (pos == end)
+            throw InvalidJSON("end-of-string looking for codepoint");
+        int c = (unsigned char)*pos;
         // multibyte UTF-8 in input: build up the unicode codepoint.
         code = c;
+
+        // How many bytes in the encoding?
         int count = 0;
         for (unsigned long mask = 0x80; mask & code; mask >>= 1) {
             if (mask == 0)
-                throw Exception("malformed UTF-8 string");
+                throw InvalidJSON("malformed UTF-8 string");
             count++;
             code &= ~mask;
         }
         if (count == 0) {
             ; // single byte char: codepoint is char value.
-        } else while (--count) {
-            if (ptr == end)
-                throw Exception("sequence ends mid-character");
-
-            c = (unsigned char)*++ptr;
+        } else while (--count != 0) {
+            if (++pos == end)
+                throw InvalidJSON("sequence ends mid-character");
+            c = (unsigned char)*pos;
             if ((c & 0xc0) != 0x80)
-                throw Exception("illegal character in multibyte sequence"); // this'll trap nulls too.
+                throw InvalidJSON("illegal character in multibyte sequence"); // this'll trap nulls too.
             code = (code << 6) | (c & 0x3f);
         }
         // All unicode characters are output as \u escapes.
@@ -338,54 +359,6 @@ parseArray(In &l, Context &&ctx)
     }
 }
 
-struct Escape {
-    std::string value;
-    Escape(std::string value_) : value(value_) { }
-};
-
-inline std::ostream & operator << (std::ostream &o, const Escape &escape)
-{
-    auto flags(o.flags());
-    for (auto i = escape.value.begin(); i != escape.value.end();) {
-        int c;
-        switch (c = (unsigned char)*i++) {
-            case '\b': o << "\\b"; break;
-            case '\f': o << "\\f"; break;
-            case '\n': o << "\\n"; break;
-            case '"': o << "\\\""; break;
-            case '\\': o << "\\\\"; break;
-            case '\r': o << "\\r"; break;
-            case '\t': o << "\\t"; break;
-            default:
-                if (unsigned(c) < 32) {
-                    o << "\\u" << std::hex << unsigned(c);
-                } else if (c & 0x80) {
-                    // multibyte UTF-8: build up the unicode codepoint.
-                    unsigned long v = c;
-                    int count = 0;
-                    for (int mask = 0x80; mask & v; mask >>= 1) {
-                        if (mask == 0)
-                            throw InvalidJSON("malformed UTF-8 string");
-                        count++;
-                        v &= ~mask;
-                    }
-                    while (--count) {
-                        c = (unsigned char)*i++;
-                        if ((c & 0xc0) != 0x80)
-                            throw InvalidJSON("illegal character in multibyte sequence");
-                        v = (v << 6) | (c & 0x3f);
-                    }
-                    o << "\\u" << std::hex << std::setfill('0') << std::setw(4) << v;
-                } else {
-                    o << (char)c;
-                }
-                break;
-        }
-    }
-    o.flags(flags);
-    return o;
-}
-
 template <typename In, typename OutputIterator> struct ArrayParser  {
     OutputIterator c;
     ArrayParser(OutputIterator &c_) : c(c_) {}
@@ -404,9 +377,11 @@ template <typename In, typename Key, typename Value> struct MapParser  {
 };
 
 
-template <typename In> void parse(In &in, int &i) { i = parseInt(in); }
-template <typename In> void parse(In &in, double &i) { i = parseFloat(in); }
-template <typename In> void parse(In &in, std::string &s) { s = parseString(in); }
+template <typename In> void parse(In &in, int &i) { i = parseInt<In, int>(in); }
+template <typename In> void parse(In &in, bool &i) { i = parseBoolean<In>(in); }
+template <typename In> void parse(In &in, double &i) { i = parseFloat<In, double>(in); }
+template <typename In> void parse(In &in, std::string &s) { s = parseString<In>(in); }
+template <typename In> void parse(In &in, NullType &s) { parseNull<In>(in); }
 
 template <typename In, typename Value>
 void parse(In &l, std::iterator<std::output_iterator_tag, Value> &n)
@@ -442,7 +417,7 @@ writeString(std::ostream &o, const std::string &s)
 {
     std::ios::fmtflags oldFlags(o.flags());
     o << "\"";
-    for (const char *i = p; *i; ++i) {
+    for (auto i = s.begin(); i != s.end(); ++i) {
         int c;
         switch (c = (unsigned char)*i) {
             case '\b': o << "\\b"; break;
@@ -455,7 +430,7 @@ writeString(std::ostream &o, const std::string &s)
             default:
                 // print characters less than ' ' and > 0x7f as unicode escapes.
                 if (c < 32 || c >= 0x7f) {
-                    UTF8 codepoint(i, 10);
+                    UTF8 codepoint(i, s.end());
                     o << "\\u" << std::hex << std::setfill('0') << std::setw(4) << codepoint.code;
                 } else {
                     o << (char)c;
@@ -497,12 +472,6 @@ struct Binary {
     size_t len;
     Binary(const void *p, size_t l) : data((const unsigned char *)p), len(l) {}
 };
-
-inline std::ostream &
-operator << (std::ostream &o, const AsJSON<Textish> &esc)
-{
-    return o << "\"" << *esc.value << "\"";
-}
 
 // A JSON "field" from an object, i.e. a <"name": value> construct
 template <typename F, typename V>
@@ -616,6 +585,4 @@ operator<<(std::ostream &os, const AsJSON<std::map<Key, Value> > &map)
 } // End of Namespace JSON
 
 
-
-}
 #endif

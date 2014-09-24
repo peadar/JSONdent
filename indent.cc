@@ -40,7 +40,7 @@ prettyObject(istream &i, ostream &o, size_t indent)
     parseObject(i, [=, &eleCount, &o] (istream &i, string idx) -> void {
         if (eleCount++ != 0)
             o << ", ";
-        o << "\n" << pad(indent + 1) << "\"" << Escape(idx) << "\": ";
+        o << "\n" << pad(indent + 1) << "\"" << print(idx) << "\": ";
         pretty<pf>(i, o, indent + 1);
     });
     if (eleCount)
@@ -48,36 +48,12 @@ prettyObject(istream &i, ostream &o, size_t indent)
     o << "}";
 }
 
-static void
-prettyString(istream &i, ostream &o, size_t indent)
+template <typename T> void
+prettyValue(istream &i, ostream &o, size_t indent)
 {
-    o << "\"" << Escape(parseString(i)) << "\"";
-}
-
-static void
-prettyNull(istream &i, ostream &o, size_t indent)
-{
-    parseNull(i);
-    o << "null";
-}
-
-static void
-prettyFloat(istream &i, ostream &o, size_t indent)
-{
-    o << parseFloat<std::istream, double>(i);
-}
-
-static void
-prettyInt(istream &i, ostream &o, size_t indent)
-{
-    o << parseFloat<std::istream, int>(i);
-}
-
-
-static void
-prettyBoolean(istream &i, ostream &o, size_t indent)
-{
-    o << (parseBoolean(i) ? "true" : "false");
+    T val;
+    parse(i, val);
+    o << JSON::print(val);
 }
 
 template <PrettyFunc pf> static void
@@ -86,10 +62,10 @@ pretty(istream &i, ostream &o, size_t indent)
     switch (peekType(i)) {
         case Array: prettyArray<pf>(i, o, indent); return;
         case Object: prettyObject<pf>(i, o, indent); return;
-        case String: prettyString(i, o, indent); return;
+        case String: prettyValue<string>(i, o, indent); return;
         case Number: pf(i, o, indent); return;
-        case Boolean: prettyBoolean(i, o, indent); return;
-        case Null: prettyNull(i, o, indent); return;
+        case Boolean: prettyValue<bool>(i, o, indent); return;
+        case Null: prettyValue<NullType>(i, o, indent); return;
         case Eof: return;
     }
 }
@@ -115,9 +91,9 @@ indent(istream &in, ostream &out)
     }
     try {
         if (doFloat)
-            pretty<prettyFloat> (in, out, 0);
+            pretty<prettyValue<double>> (in, out, 0);
         else
-            pretty<prettyInt> (in, out, 0);
+            pretty<prettyValue<int>> (in, out, 0);
         cout << endl;
         return true;
     }
