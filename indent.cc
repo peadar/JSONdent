@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include <json.h>
 #include <fstream>
 #include <cstring>
@@ -13,23 +14,25 @@ const char *pad(size_t indent) {
     return spaces + maxindent - indent;
 }
 
-template <typename numtype> static void pretty(istream &i, ostream &o, size_t indent);
+typedef void (*PrettyFunc)(istream &, ostream &, size_t);
 
-template <typename numtype> void
+template <PrettyFunc pf> static void pretty(istream &i, ostream &o, size_t indent);
+
+template <PrettyFunc pf> void
 prettyArray(istream &i, ostream &o, size_t indent)
 {
     o << "[";
     size_t eleCount = 0;
     parseArray(i, [=, &eleCount, &o] (istream &i) -> void {
         o << (eleCount++ ? ", " : "") << "\n" << pad(indent + 1);
-        pretty<numtype>(i, o, indent+1);
+        pretty<pf>(i, o, indent+1);
     });
     if (eleCount)
         o << "\n" << pad(indent);
     o << "]";
 }
 
-template <typename numtype> static void
+template <PrettyFunc pf> static void
 prettyObject(istream &i, ostream &o, size_t indent)
 {
     o << "{";
@@ -38,7 +41,7 @@ prettyObject(istream &i, ostream &o, size_t indent)
         if (eleCount++ != 0)
             o << ", ";
         o << "\n" << pad(indent + 1) << "\"" << Escape(idx) << "\": ";
-        pretty<numtype>(i, o, indent + 1);
+        pretty<pf>(i, o, indent + 1);
     });
     if (eleCount)
         o << "\n" << pad(indent);
@@ -58,11 +61,18 @@ prettyNull(istream &i, ostream &o, size_t indent)
     o << "null";
 }
 
-template <typename numtype> static void
-prettyNumber(istream &i, ostream &o, size_t indent)
+static void
+prettyFloat(istream &i, ostream &o, size_t indent)
 {
-    o << parseNumber<numtype>(i);
+    o << parseFloat<std::istream, double>(i);
 }
+
+static void
+prettyInt(istream &i, ostream &o, size_t indent)
+{
+    o << parseFloat<std::istream, int>(i);
+}
+
 
 static void
 prettyBoolean(istream &i, ostream &o, size_t indent)
@@ -70,14 +80,14 @@ prettyBoolean(istream &i, ostream &o, size_t indent)
     o << (parseBoolean(i) ? "true" : "false");
 }
 
-template <typename numtype> static void
+template <PrettyFunc pf> static void
 pretty(istream &i, ostream &o, size_t indent)
 {
     switch (peekType(i)) {
-        case Array: prettyArray<numtype>(i, o, indent); return;
-        case Object: prettyObject<numtype>(i, o, indent); return;
+        case Array: prettyArray<pf>(i, o, indent); return;
+        case Object: prettyObject<pf>(i, o, indent); return;
         case String: prettyString(i, o, indent); return;
-        case Number: prettyNumber<numtype>(i, o, indent); return;
+        case Number: pf(i, o, indent); return;
         case Boolean: prettyBoolean(i, o, indent); return;
         case Null: prettyNull(i, o, indent); return;
         case Eof: return;
@@ -105,9 +115,9 @@ indent(istream &in, ostream &out)
     }
     try {
         if (doFloat)
-            pretty<double> (in, out, 0);
+            pretty<prettyFloat> (in, out, 0);
         else
-            pretty<long> (in, out, 0);
+            pretty<prettyInt> (in, out, 0);
         cout << endl;
         return true;
     }

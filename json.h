@@ -4,9 +4,10 @@
 
 #include <cctype>
 #include <cmath>
-#include <istream>
 #include <sstream>
 #include <iomanip>
+#include <map>
+#include <vector>
 
 namespace JSON {
 
@@ -20,16 +21,16 @@ public:
 
 enum Type { Array, Boolean, Null, Number, Object, String, Eof, JSONTypeCount };
 
-static inline int
-skipSpace(std::istream &l)
+template <typename In> int
+skipSpace(In &l)
 {
     while (!l.eof() && isspace(l.peek()))
         l.ignore();
     return l.eof() ? -1 : l.peek();
 }
 
-static inline char
-expectAfterSpace(std::istream &l, char expected)
+template <typename In> char
+expectAfterSpace(In &l, char expected)
 {
     char c = skipSpace(l);
     if (c != expected)
@@ -38,8 +39,8 @@ expectAfterSpace(std::istream &l, char expected)
     return c;
 }
 
-static inline void
-skipText(std::istream &l, const char *text)
+template <typename In> void
+skipText(In &l, const char *text)
 {
     for (size_t i = 0; text[i]; ++i) {
         char c;
@@ -49,8 +50,8 @@ skipText(std::istream &l, const char *text)
     }
 }
 
-static inline Type
-peekType(std::istream &l)
+template <typename In> Type
+peekType(In &l)
 {
     char c = skipSpace(l);
     switch (c) {
@@ -69,11 +70,11 @@ peekType(std::istream &l)
     }
 }
 
-template <typename Context> void parseObject(std::istream &l, Context &&ctx);
-template <typename Context> void parseArray(std::istream &l, Context &&ctx);
+template <typename In, typename Context> void parseObject(In &l, Context &&ctx);
+template <typename In, typename Context> void parseArray(In &l, Context &&ctx);
 
-template <typename I> I
-parseInt(std::istream &l)
+template <typename In, typename I> I
+parseInt(In &l)
 {
     int sign;
     char c;
@@ -102,10 +103,10 @@ parseInt(std::istream &l)
  * integral.
  */
 
-template <typename FloatType> static inline FloatType
-parseFloat(std::istream &l)
+template <typename In, typename FloatType> static inline FloatType
+parseFloat(In &l)
 {
-    FloatType rv = parseInt<FloatType>(l);
+    FloatType rv = parseInt<In, FloatType>(l);
     if (l.peek() == '.') {
         l.ignore();
         FloatType scale = rv < 0 ? -1 : 1;
@@ -129,16 +130,11 @@ parseFloat(std::istream &l)
         } else {
             throw InvalidJSON("expected sign or numeric after exponent");
         }
-        auto exponent = sign * parseInt<int>(l);
+        auto exponent = sign * parseInt<In, int>(l);
         rv *= std::pow(10.0, exponent);
     }
     return rv;
 }
-
-template <typename Integer> inline Integer parseNumber(std::istream &i) { return parseInt<long double>(i); }
-template <> inline double parseNumber<double> (std::istream &i) { return parseFloat<double>(i); }
-template <> inline float parseNumber<float> (std::istream &i) { return parseFloat<float>(i); }
-template <> inline long double parseNumber<long double> (std::istream &i) { return parseFloat<long double>(i); }
 
 static inline int hexval(char c)
 {
@@ -154,7 +150,31 @@ static inline int hexval(char c)
 struct UTF8 {
     unsigned long code;
     UTF8(unsigned long code_) : code(code_) {}
-};
+    UTF8(const char *&ptr, size_t max) {
+        const char *end = ptr + max;
+        int c = *(unsigned char *)ptr;
+        // multibyte UTF-8 in input: build up the unicode codepoint.
+        code = c;
+        int count = 0;
+        for (unsigned long mask = 0x80; mask & code; mask >>= 1) {
+            if (mask == 0)
+                throw Exception("malformed UTF-8 string");
+            count++;
+            code &= ~mask;
+        }
+        if (count == 0) {
+            ; // single byte char: codepoint is char value.
+        } else while (--count) {
+            if (ptr == end)
+                throw Exception("sequence ends mid-character");
+
+            c = (unsigned char)*++ptr;
+            if ((c & 0xc0) != 0x80)
+                throw Exception("illegal character in multibyte sequence"); // this'll trap nulls too.
+            code = (code << 6) | (c & 0x3f);
+        }
+        // All unicode characters are output as \u escapes.
+    }};
 
 inline std::ostream &
 operator<<(std::ostream &os, const UTF8 &utf)
@@ -179,8 +199,8 @@ operator<<(std::ostream &os, const UTF8 &utf)
     return os;
 }
 
-static std::string
-parseString(std::istream &l)
+template <typename In> std::string
+parseString(In &l)
 {
     expectAfterSpace(l, '"');
     std::ostringstream rv;
@@ -234,8 +254,8 @@ parseString(std::istream &l)
     }
 }
 
-static inline bool
-parseBoolean(std::istream &l)
+template <typename In> bool
+parseBoolean(In &l)
 {
     char c = skipSpace(l);
     switch (c) {
@@ -245,29 +265,29 @@ parseBoolean(std::istream &l)
     }
 }
 
-static inline void
-parseNull(std::istream &l)
+template <typename In> void
+parseNull(In &l)
 {
     skipSpace(l);
     skipText(l, "null");
 }
 
-static inline void // Parse any value but discard the result.
-parseValue(std::istream &l)
+template <typename In> void // Parse any value but discard the result.
+parseValue(In &l)
 {
     switch (peekType(l)) {
         case Array: parseArray(l, [](std::istream &l) -> void { parseValue(l); }); break;
         case Boolean: parseBoolean(l); break;
         case Null: parseNull(l); break;
-        case Number: parseNumber<float>(l); break;
-        case Object: parseObject(l, [](std::istream &l, std::string) -> void { parseValue(l); }); break;
+        case Number: parseFloat<In, float>(l); break;
+        case Object: parseObject(l, [](In &l, std::string) -> void { parseValue(l); }); break;
         case String: parseString(l); break;
         default: throw InvalidJSON("unknown type for JSON construct");
     }
 }
 
-template <typename Context> void
-parseObject(std::istream &l, Context &&ctx)
+template <typename In, typename Context> void
+parseObject(In &l, Context &&ctx)
 {
     expectAfterSpace(l, '{');
     for (;;) {
@@ -292,8 +312,8 @@ parseObject(std::istream &l, Context &&ctx)
     }
 }
 
-template <typename Context> void
-parseArray(std::istream &l, Context &&ctx)
+template <typename In, typename Context> void
+parseArray(In &l, Context &&ctx)
 {
     expectAfterSpace(l, '[');
     char c;
@@ -366,19 +386,236 @@ inline std::ostream & operator << (std::ostream &o, const Escape &escape)
     return o;
 }
 
+template <typename In, typename OutputIterator> struct ArrayParser  {
+    OutputIterator c;
+    ArrayParser(OutputIterator &c_) : c(c_) {}
+    void operator()(In &l, int idx) {
+        typename OutputIterator::value_type value = *c++;
+        parse(l, value);
+    }
+};
+
+template <typename In, typename Key, typename Value> struct MapParser  {
+    std::map<Key, Value> &c;
+    MapParser(std::map<Key, Value> &c_) : c(c_) {}
+    void operator()(In &l, std::string field) {
+        parse(l, c[field]);
+    }
+};
+
+
+template <typename In> void parse(In &in, int &i) { i = parseInt(in); }
+template <typename In> void parse(In &in, double &i) { i = parseFloat(in); }
+template <typename In> void parse(In &in, std::string &s) { s = parseString(in); }
+
+template <typename In, typename Value>
+void parse(In &l, std::iterator<std::output_iterator_tag, Value> &n)
+{
+    ArrayParser<In, std::iterator<std::output_iterator_tag, Value>> valueParser(n);
+    parseArray(l, valueParser);
+}
+
+template <typename In, typename Key, typename Value>
+void parse(In &l, std::map<Key, Value> &n)
+{
+    MapParser<In, Key, Value> valueParser(n);
+    parseObject(l, valueParser);
 }
 
 
-static inline std::ostream &
-operator<<(std::ostream &os, const JSON::Type &t)
+// Seralizing JSON objects.
+
+// an AsJSON<T> serializes a T as JSON. Use JSON::print(t) to easily create an AsJSON<T>
+template <typename T> struct AsJSON {
+    const T *value;
+    explicit AsJSON(const T *f) : value(f) {}
+};
+
+template <typename T> AsJSON<T> print(const T *t) { return AsJSON<T>(t); }
+template <typename T> AsJSON<T> print(T *t) { return AsJSON<T>(t); }
+template <typename T> AsJSON<T> print(const T &t) { return AsJSON<T>(&t); }
+template <typename T> AsJSON<T> print(T &t) { return AsJSON<T>(&t); }
+
+// Writes UTF-8 encoded text as a JSON string
+inline std::ostream &
+writeString(std::ostream &o, const std::string &s)
 {
-    switch (t) {
-        case JSON::Array: os << "Array"; break;
-        case JSON::Number: os << "Number"; break;
-        case JSON::Object: os << "Object"; break;
-        case JSON::String: os << "String"; break;
-        default: throw JSON::InvalidJSON("not a JSON type");
+    std::ios::fmtflags oldFlags(o.flags());
+    o << "\"";
+    for (const char *i = p; *i; ++i) {
+        int c;
+        switch (c = (unsigned char)*i) {
+            case '\b': o << "\\b"; break;
+            case '\f': o << "\\f"; break;
+            case '\n': o << "\\n"; break;
+            case '"': o << "\\\""; break;
+            case '\\': o << "\\\\"; break;
+            case '\r': o << "\\r"; break;
+            case '\t': o << "\\t"; break;
+            default:
+                // print characters less than ' ' and > 0x7f as unicode escapes.
+                if (c < 32 || c >= 0x7f) {
+                    UTF8 codepoint(i, 10);
+                    o << "\\u" << std::hex << std::setfill('0') << std::setw(4) << codepoint.code;
+                } else {
+                    o << (char)c;
+                }
+                break;
+        }
     }
+    o << "\"";
+    o.flags(oldFlags);
+    return o;
+}
+
+inline std::ostream &
+operator << (std::ostream &o, const AsJSON<char> &esc)
+{
+    return writeString(o, esc.value);
+}
+
+inline std::ostream &
+operator << (std::ostream &o, const AsJSON<const char> &esc)
+{
+    return writeString(o, esc.value);
+}
+
+inline std::ostream &
+operator << (std::ostream &o, const AsJSON<const std::string> &esc)
+{
+    return writeString(o, esc.value->c_str());
+}
+
+inline std::ostream &
+operator << (std::ostream &o, const AsJSON<std::string> &esc)
+{
+    return writeString(o, esc.value->c_str());
+}
+
+struct Binary {
+    const unsigned char *data;
+    size_t len;
+    Binary(const void *p, size_t l) : data((const unsigned char *)p), len(l) {}
+};
+
+inline std::ostream &
+operator << (std::ostream &o, const AsJSON<Textish> &esc)
+{
+    return o << "\"" << *esc.value << "\"";
+}
+
+// A JSON "field" from an object, i.e. a <"name": value> construct
+template <typename F, typename V>
+struct Field {
+    const F name;
+    const V &value;
+    Field(const F name_, const V &value_) : name(name_), value(value_) {}
+};
+
+template <typename T, typename V> static inline std::ostream &
+operator<<(std::ostream &os, const Field<T, V> &f) {
+    return os << JSON::print(f.name) << ":" << JSON::print(f.value);
+}
+
+template <typename V> Field<const char *, V> field(const char *t, const V &v) { return Field<const char *, V>(t, v); }
+template <typename V> Field<const std::string &, V> field(const std::string &t, const V &v) { return Field<const std::string &, V>(t, v); }
+
+// Boolean type
+static inline std::ostream &operator<<(std::ostream &os, const AsJSON<bool> f) { return os << (*f.value ? "true" : "false"); }
+// Integer types.
+static inline std::ostream &operator<<(std::ostream &os, const AsJSON<int> f) { return os << *f.value; }
+static inline std::ostream &operator<<(std::ostream &os, const AsJSON<short> f) { return os << *f.value; }
+static inline std::ostream &operator<<(std::ostream &os, const AsJSON<long long> f) { return os << *f.value; }
+static inline std::ostream &operator<<(std::ostream &os, const AsJSON<long> f) { return os << *f.value; }
+static inline std::ostream &operator<<(std::ostream &os, const AsJSON<unsigned> f) { return os << *f.value; }
+static inline std::ostream &operator<<(std::ostream &os, const AsJSON<unsigned long> f) { return os << *f.value; }
+static inline std::ostream &operator<<(std::ostream &os, const AsJSON<unsigned char> f) { return os << *f.value; }
+static inline std::ostream &operator<<(std::ostream &os, const AsJSON<unsigned long long> f) { return os << *f.value; }
+
+static inline std::ostream &
+operator<<(std::ostream &os, const Binary &bin) {
+    std::ios_base::fmtflags flags = os.flags();
+    for (size_t i = 0; i < bin.len; ++i)
+        os << std::hex << std::setfill('0') << std::setw(2) << unsigned(bin.data[i]);
+    os.flags(flags);
     return os;
+}
+
+static inline std::ostream &
+operator<<(std::ostream &os, const AsJSON<Binary> &f) {
+    return os << '"' << *f.value << '"';
+}
+
+/* Print a pointer as if it was the item it points to. */
+template <typename T> 
+std::ostream & operator <<(std::ostream &os, const JSON::AsJSON<T *> &j) { return os << print(j.value); }
+
+// print a map's iterator range as an object.
+template <class Iterator>
+struct MapRange {
+    Iterator begin;
+    Iterator end;
+    MapRange(Iterator begin_, Iterator end_) : begin(begin_), end(end_) {}
+};
+
+template <class Iterator>
+std::ostream &
+operator<<(std::ostream &os, const AsJSON<MapRange<Iterator> > &range) {
+    os << "{";
+    for (Iterator item = range.value->begin; item != range.value->end; ++item)
+        os << (item == range.value->begin ? "" : ", ") << field(item->first, item->second);
+    os << "}";
+    return os;
+}
+
+/*
+ * Print other iterator ranges as an array.
+ */
+template <class Iterator>
+struct ListRange {
+    Iterator begin;
+    Iterator end;
+    ListRange(const Iterator &begin_, const Iterator &end_) : begin(begin_), end(end_) {}
+};
+
+template <class Iterator>
+ListRange<Iterator> array(const Iterator &begin, const Iterator &end) { return ListRange<Iterator>(begin, end); }
+
+template <typename Iter>
+static inline typename std::ostream &
+operator<<(std::ostream &os, const AsJSON<ListRange<Iter> > &f)
+{
+    os << "[";
+    for (Iter i = f.value->begin; i != f.value->end; ++i) {
+        if (i != f.value->begin)
+            os << ",\n";
+        os << JSON::print(*i);
+    }
+    return os << "]";
+}
+
+// Easy access to array printing for lists, vectors and maps.
+template <typename Item>
+static inline typename std::ostream &
+operator<<(std::ostream &os, const AsJSON<std::list<Item> > &f)
+{
+    return os << JSON::print(array(f.value->begin(), f.value->end()));
+}
+
+template <typename Item>
+static inline typename std::ostream &
+operator<<(std::ostream &os, const AsJSON<std::vector<Item> > &f)
+{
+    return os << JSON::print(array(f.value->begin(), f.value->end()));
+}
+
+template <class Value, class Key> std::ostream &
+operator<<(std::ostream &os, const AsJSON<std::map<Key, Value> > &map)
+{ return os << JSON::print(MapRange<typename std::map<Key, Value>::const_iterator>(map.value->begin(), map.value->end())); }
+
+} // End of Namespace JSON
+
+
+
 }
 #endif
