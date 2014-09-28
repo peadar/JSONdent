@@ -40,7 +40,7 @@ prettyObject(istream &i, ostream &o, size_t indent)
     parseObject(i, [=, &eleCount, &o] (istream &i, string idx) -> void {
         if (eleCount++ != 0)
             o << ", ";
-        o << "\n" << pad(indent + 1) << "\"" << print(idx) << "\": ";
+        o << "\n" << pad(indent + 1) << print(idx) << ": ";
         pretty(i, o, indent + 1);
     });
     if (eleCount)
@@ -55,6 +55,17 @@ prettyValue(istream &i, ostream &o, size_t indent)
     parse(i, val);
     o << JSON::print(val);
 }
+
+template <> void
+prettyValue<std::string>(istream &i, ostream &o, size_t indent)
+{
+    char buf[16384];
+    char *p = buf;
+    parseString(i, p);
+    *p = 0;
+    o << JSON::print(buf);
+}
+
 
 static void
 pretty(istream &i, ostream &o, size_t indent)

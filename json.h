@@ -161,6 +161,8 @@ struct UTF8 {
     unsigned long code;
     explicit UTF8(unsigned long code_) : code(code_) {}
 
+    template <typename Iter> void write(Iter &i);
+
     template <typename Iter>
     UTF8(Iter &pos, const Iter &end) {
 
@@ -193,63 +195,60 @@ struct UTF8 {
     operator std::string();
 };
 
-
-UTF8::operator std::string()
+template <typename Iter> void
+UTF8::write(Iter &i)
 {
-    std::string out;
     if ((code & 0x7f) == code) {
-        out.push_back(char(code));
-        return out;
-    }
-    uint8_t prefixBits = 0x80; // start with 100xxxxx
-    int byteCount = 0; // one less than entire bytecount of encoding.
-    unsigned long value = code;
+        *i++ = code;
+    } else {
+        uint8_t prefixBits = 0x80; // start with 100xxxxx
+        int byteCount = 0; // one less than entire bytecount of encoding.
+        unsigned long value = code;
 
-    for (size_t mask = 0x7ff;; mask = mask << 5 | 0x1f) {
-        prefixBits = prefixBits >> 1 | 0x80;
-        byteCount++;
-        if ((value & mask) == value)
-            break;
+        for (size_t mask = 0x7ff;; mask = mask << 5 | 0x1f) {
+            prefixBits = prefixBits >> 1 | 0x80;
+            byteCount++;
+            if ((value & mask) == value)
+                break;
+        }
+        *i++ = char(value >> 6 * byteCount | prefixBits);
+        while (byteCount--)
+            *i++ = char((value >> 6 * byteCount  & ~0xc0) | 0x80);
     }
-    out.push_back(char(value >> 6 * byteCount | prefixBits));
-    while (byteCount--)
-        out.push_back(char((value >> 6 * byteCount  & ~0xc0) | 0x80));
-    return out;
 }
 
-template <typename In> std::string
-parseString(In &l)
+template <typename In, typename Iterator> void
+parseString(In &l, Iterator &i)
 {
     expectAfterSpace(l, '"');
-    std::string rv;
     for (;;) {
         char c;
         l.get(c);
         switch (c) {
             case '"':
-                return rv;
+                return;
             case '\\':
                 l.get(c);
                 switch (c) {
                     case '"':
                     case '\\':
                     case '/':
-                        rv.push_back(c);
+                        *i++ = c;
                         break;
                     case 'b':
-                        rv.push_back('\b');
+                        *i++ = '\b';
                         break;
                     case 'f':
-                        rv.push_back('\f');
+                        *i++ = '\f';
                         break;
                     case 'n':
-                        rv.push_back('\n');
+                        *i++ = '\n';
                         break;
                     case 'r':
-                        rv.push_back('\r');
+                        *i++ = '\r';
                         break;
                     case 't':
-                        rv.push_back('\t');
+                        *i++ = '\t';
                         break;
                     default:
                         throw InvalidJSON(std::string("invalid quoted char '") + c + "'");
@@ -260,16 +259,26 @@ parseString(In &l)
                             l.get(c);
                             codePoint = codePoint * 16 + hexval(c);
                         }
-                        rv.append(std::string(UTF8(codePoint)));
+                        UTF8 code(codePoint);
+                        code.write(i);
                     }
                     break;
                 }
                 break;
             default:
-                rv.push_back(c);
+                *i++ = c;
                 break;
         }
     }
+}
+
+template <typename In> std::string
+parseString(In &in)
+{
+    std::string s;
+    auto it = std::back_inserter(s);
+    parseString(in, it);
+    return s;
 }
 
 template <typename In> bool
