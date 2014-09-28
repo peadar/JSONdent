@@ -20,21 +20,17 @@ public:
     ~InvalidJSON() throw() {};
 };
 
-enum Type { Array, Boolean, Null, Number, Object, String, Eof, JSONTypeCount };
+enum Type { JArray, JBoolean, JNull, JNumber, JObject, JString, JEof, JJSONTypeCount };
 
-class NullType {};
+class Null {};
 
-class Number {
-    signed char sign; // -1 or + 1
-    struct {
-        long integer;
-        long fraction;
-    } mantissa;
-
-    unsigned long exponent;
-    operator long () { return (long)integer * sign; }
-    operator double () { return (long)mantissa * sign * pow(10, exponent); }
+struct Number {
+    long mantissa;
+    long exponent;
+    operator double();
+    operator long();
 };
+
 
 template <typename In> int
 skipSpace(In &l)
@@ -70,16 +66,16 @@ peekType(In &l)
 {
     char c = skipSpace(l);
     switch (c) {
-        case '{': return Object;
-        case '[': return Array;
-        case '"': return String;
-        case '-': return Number;
-        case 't' : case 'f': return Boolean;
-        case 'n' : return Null;
-        case -1: return Eof;
+        case '{': return JObject;
+        case '[': return JArray;
+        case '"': return JString;
+        case '-': return JNumber;
+        case 't' : case 'f': return JBoolean;
+        case 'n' : return JNull;
+        case -1: return JEof;
         default: {
             if (c >= '0' && c <= '9')
-                return Number;
+                return JNumber;
             throw InvalidJSON(std::string("unexpected token '") + char(c) + "' at start of JSON object");
         }
     }
@@ -118,19 +114,20 @@ parseInt(In &l)
  * integral.
  */
 
-template <typename In, typename FloatType> static inline NumberType
+template <typename In> static inline class Number
 parseNumber(In &l)
 {
-    NumberType rv;
-    rv.mantissa = parseInt<In, FloatType>(l);
+    class Number rv;
+    rv.mantissa = parseInt<In, long>(l);
+    rv.exponent = 0;
     if (l.peek() == '.') {
         l.ignore();
-        FloatType scale = rv < 0 ? -1 : 1;
         char c;
         while (isdigit(c = l.peek())) {
+            rv.exponent -= 1;
+            rv.mantissa *= 10;
+            rv.mantissa += c - '0';
             l.ignore();
-            scale /= 10;
-            rv = rv + scale * (c - '0');
         }
     }
     if (l.peek() == 'e' || l.peek() == 'E') {
@@ -146,8 +143,7 @@ parseNumber(In &l)
         } else {
             throw InvalidJSON("expected sign or numeric after exponent");
         }
-        auto exponent = sign * parseInt<In, int>(l);
-        rv *= std::pow(10.0, exponent);
+        rv.exponent += sign * parseInt<In, long>(l);
     }
     return rv;
 }
@@ -297,12 +293,12 @@ template <typename In> void // Parse any value but discard the result.
 parseValue(In &l)
 {
     switch (peekType(l)) {
-        case Array: parseArray(l, [](std::istream &l) -> void { parseValue(l); }); break;
-        case Boolean: parseBoolean(l); break;
-        case Null: parseNull(l); break;
-        case Number: parseFloat<In, float>(l); break;
-        case Object: parseObject(l, [](In &l, std::string) -> void { parseValue(l); }); break;
-        case String: parseString(l); break;
+        case JArray: parseArray(l, [](std::istream &l) -> void { parseValue(l); }); break;
+        case JBoolean: parseBoolean(l); break;
+        case JNull: parseNull(l); break;
+        case JNumber: parseNumber(l); break;
+        case JObject: parseObject(l, [](In &l, std::string) -> void { parseValue(l); }); break;
+        case JString: parseString(l); break;
         default: throw InvalidJSON("unknown type for JSON construct");
     }
 }
@@ -379,9 +375,10 @@ template <typename In, typename Key, typename Value> struct MapParser  {
 
 template <typename In> void parse(In &in, int &i) { i = parseInt<In, int>(in); }
 template <typename In> void parse(In &in, bool &i) { i = parseBoolean<In>(in); }
-template <typename In> void parse(In &in, double &i) { i = parseFloat<In, double>(in); }
+template <typename In> void parse(In &in, double &i) { i = parseNumber<In>(in); }
 template <typename In> void parse(In &in, std::string &s) { s = parseString<In>(in); }
-template <typename In> void parse(In &in, NullType &s) { parseNull<In>(in); }
+template <typename In> void parse(In &in, Null &s) { parseNull<In>(in); }
+template <typename In> void parse(In &in, Number &s) { s = parseNumber<In>(in); }
 
 template <typename In, typename Value>
 void parse(In &l, std::iterator<std::output_iterator_tag, Value> &n)
@@ -577,6 +574,42 @@ operator<<(std::ostream &os, const AsJSON<std::vector<Item> > &f)
 {
     return os << JSON::print(array(f.value->begin(), f.value->end()));
 }
+
+static inline std::ostream &
+operator << (std::ostream &os, const AsJSON<Number> &number) {
+    static unsigned long pow10[] = {
+        1UL,
+        10UL,
+        100UL,
+        1000UL,
+        10000UL,
+        100000UL,
+        1000000UL,
+        10000000UL,
+        100000000UL,
+        1000000000UL,
+        10000000000UL,
+        100000000000UL,
+        1000000000000UL,
+        10000000000000UL,
+        100000000000000UL,
+        1000000000000000UL,
+        10000000000000000UL,
+        100000000000000000UL,
+        1000000000000000000UL
+    };
+    os << number.value->mantissa;
+    if (number.value->exponent) {
+        os << "e" << number.value->exponent;
+    }
+    return os;
+}
+
+std::ostream &
+operator << (std::ostream &os, const AsJSON<Null> &null) {
+    os << "null";
+}
+
 
 template <class Value, class Key> std::ostream &
 operator<<(std::ostream &os, const AsJSON<std::map<Key, Value> > &map)

@@ -16,23 +16,23 @@ const char *pad(size_t indent) {
 
 typedef void (*PrettyFunc)(istream &, ostream &, size_t);
 
-template <PrettyFunc pf> static void pretty(istream &i, ostream &o, size_t indent);
+static void pretty(istream &i, ostream &o, size_t indent);
 
-template <PrettyFunc pf> void
+void
 prettyArray(istream &i, ostream &o, size_t indent)
 {
     o << "[";
     size_t eleCount = 0;
     parseArray(i, [=, &eleCount, &o] (istream &i) -> void {
         o << (eleCount++ ? ", " : "") << "\n" << pad(indent + 1);
-        pretty<pf>(i, o, indent+1);
+        pretty(i, o, indent+1);
     });
     if (eleCount)
         o << "\n" << pad(indent);
     o << "]";
 }
 
-template <PrettyFunc pf> static void
+static void
 prettyObject(istream &i, ostream &o, size_t indent)
 {
     o << "{";
@@ -41,7 +41,7 @@ prettyObject(istream &i, ostream &o, size_t indent)
         if (eleCount++ != 0)
             o << ", ";
         o << "\n" << pad(indent + 1) << "\"" << print(idx) << "\": ";
-        pretty<pf>(i, o, indent + 1);
+        pretty(i, o, indent + 1);
     });
     if (eleCount)
         o << "\n" << pad(indent);
@@ -56,17 +56,17 @@ prettyValue(istream &i, ostream &o, size_t indent)
     o << JSON::print(val);
 }
 
-template <PrettyFunc pf> static void
+static void
 pretty(istream &i, ostream &o, size_t indent)
 {
     switch (peekType(i)) {
-        case Array: prettyArray<pf>(i, o, indent); return;
-        case Object: prettyObject<pf>(i, o, indent); return;
-        case String: prettyValue<string>(i, o, indent); return;
-        case Number: pf(i, o, indent); return;
-        case Boolean: prettyValue<bool>(i, o, indent); return;
-        case Null: prettyValue<NullType>(i, o, indent); return;
-        case Eof: return;
+        case JArray: prettyArray(i, o, indent); return;
+        case JObject: prettyObject(i, o, indent); return;
+        case JString: prettyValue<string>(i, o, indent); return;
+        case JNumber: prettyValue<Number>(i, o, indent); return;
+        case JBoolean: prettyValue<bool>(i, o, indent); return;
+        case JNull: prettyValue<Null>(i, o, indent); return;
+        case JEof: return;
     }
 }
 
@@ -90,10 +90,7 @@ indent(istream &in, ostream &out)
             throw InvalidJSON("invalid BOM/JSON");
     }
     try {
-        if (doFloat)
-            pretty<prettyValue<double>> (in, out, 0);
-        else
-            pretty<prettyValue<int>> (in, out, 0);
+        pretty(in, out, 0);
         cout << endl;
         return true;
     }
