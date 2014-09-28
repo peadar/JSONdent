@@ -162,7 +162,7 @@ static inline int hexval(char c)
 
 struct UTF8 {
     unsigned long code;
-    UTF8(unsigned long code_) : code(code_) {}
+    explicit UTF8(unsigned long code_) : code(code_) {}
 
     template <typename Iter>
     UTF8(Iter &pos, const Iter &end) {
@@ -194,8 +194,9 @@ struct UTF8 {
         // All unicode characters are output as \u escapes.
     }};
 
-inline std::ostream &
-operator<<(std::ostream &os, const UTF8 &utf)
+
+template <typename Out> Out &
+operator<<(Out &os, const UTF8 &utf)
 {
     if ((utf.code & 0x7f) == utf.code) {
         os.put(char(utf.code));
@@ -410,8 +411,8 @@ template <typename T> AsJSON<T> print(const T &t) { return AsJSON<T>(&t); }
 template <typename T> AsJSON<T> print(T &t) { return AsJSON<T>(&t); }
 
 // Writes UTF-8 encoded text as a JSON string
-inline std::ostream &
-writeString(std::ostream &o, const std::string &s)
+template <typename Out> inline Out &
+writeString(Out &o, const std::string &s)
 {
     std::ios::fmtflags oldFlags(o.flags());
     o << "\"";
@@ -441,26 +442,26 @@ writeString(std::ostream &o, const std::string &s)
     return o;
 }
 
-inline std::ostream &
-operator << (std::ostream &o, const AsJSON<char> &esc)
+template <typename Out> Out &
+operator << (Out &o, const AsJSON<char> &esc)
 {
     return writeString(o, esc.value);
 }
 
-inline std::ostream &
-operator << (std::ostream &o, const AsJSON<const char> &esc)
+template <typename Out> Out &
+operator << (Out &o, const AsJSON<const char> &esc)
 {
     return writeString(o, esc.value);
 }
 
-inline std::ostream &
-operator << (std::ostream &o, const AsJSON<const std::string> &esc)
+template <typename Out> Out &
+operator << (Out &o, const AsJSON<const std::string> &esc)
 {
     return writeString(o, esc.value->c_str());
 }
 
-inline std::ostream &
-operator << (std::ostream &o, const AsJSON<std::string> &esc)
+template <typename Out> Out &
+operator << (Out &o, const AsJSON<std::string> &esc)
 {
     return writeString(o, esc.value->c_str());
 }
@@ -479,8 +480,8 @@ struct Field {
     Field(const F name_, const V &value_) : name(name_), value(value_) {}
 };
 
-template <typename T, typename V> static inline std::ostream &
-operator<<(std::ostream &os, const Field<T, V> &f) {
+template <typename Out, typename T, typename V> static inline Out &
+operator<<(Out &os, const Field<T, V> &f) {
     return os << JSON::print(f.name) << ":" << JSON::print(f.value);
 }
 
@@ -488,19 +489,19 @@ template <typename V> Field<const char *, V> field(const char *t, const V &v) { 
 template <typename V> Field<const std::string &, V> field(const std::string &t, const V &v) { return Field<const std::string &, V>(t, v); }
 
 // Boolean type
-static inline std::ostream &operator<<(std::ostream &os, const AsJSON<bool> f) { return os << (*f.value ? "true" : "false"); }
+template <typename Out> Out &operator<<(Out &os, const AsJSON<bool> f) { return os << (*f.value ? "true" : "false"); }
 // Integer types.
-static inline std::ostream &operator<<(std::ostream &os, const AsJSON<int> f) { return os << *f.value; }
-static inline std::ostream &operator<<(std::ostream &os, const AsJSON<short> f) { return os << *f.value; }
-static inline std::ostream &operator<<(std::ostream &os, const AsJSON<long long> f) { return os << *f.value; }
-static inline std::ostream &operator<<(std::ostream &os, const AsJSON<long> f) { return os << *f.value; }
-static inline std::ostream &operator<<(std::ostream &os, const AsJSON<unsigned> f) { return os << *f.value; }
-static inline std::ostream &operator<<(std::ostream &os, const AsJSON<unsigned long> f) { return os << *f.value; }
-static inline std::ostream &operator<<(std::ostream &os, const AsJSON<unsigned char> f) { return os << *f.value; }
-static inline std::ostream &operator<<(std::ostream &os, const AsJSON<unsigned long long> f) { return os << *f.value; }
+template <typename Out> Out &operator<<(Out &os, const AsJSON<int> f) { return os << *f.value; }
+template <typename Out> Out &operator<<(Out &os, const AsJSON<short> f) { return os << *f.value; }
+template <typename Out> Out &operator<<(Out &os, const AsJSON<long long> f) { return os << *f.value; }
+template <typename Out> Out &operator<<(Out &os, const AsJSON<long> f) { return os << *f.value; }
+template <typename Out> Out &operator<<(Out &os, const AsJSON<unsigned> f) { return os << *f.value; }
+template <typename Out> Out &operator<<(Out &os, const AsJSON<unsigned long> f) { return os << *f.value; }
+template <typename Out> Out &operator<<(Out &os, const AsJSON<unsigned char> f) { return os << *f.value; }
+template <typename Out> Out &operator<<(Out &os, const AsJSON<unsigned long long> f) { return os << *f.value; }
 
-static inline std::ostream &
-operator<<(std::ostream &os, const Binary &bin) {
+template <typename Out> Out &
+operator<<(Out &os, const Binary &bin) {
     std::ios_base::fmtflags flags = os.flags();
     for (size_t i = 0; i < bin.len; ++i)
         os << std::hex << std::setfill('0') << std::setw(2) << unsigned(bin.data[i]);
@@ -508,14 +509,14 @@ operator<<(std::ostream &os, const Binary &bin) {
     return os;
 }
 
-static inline std::ostream &
-operator<<(std::ostream &os, const AsJSON<Binary> &f) {
+template <typename Out> Out &
+operator<<(Out &os, const AsJSON<Binary> &f) {
     return os << '"' << *f.value << '"';
 }
 
 /* Print a pointer as if it was the item it points to. */
-template <typename T> 
-std::ostream & operator <<(std::ostream &os, const JSON::AsJSON<T *> &j) { return os << print(j.value); }
+template <typename Out, typename T> 
+Out & operator <<(Out &os, const JSON::AsJSON<T *> &j) { return os << print(j.value); }
 
 // print a map's iterator range as an object.
 template <class Iterator>
@@ -525,9 +526,9 @@ struct MapRange {
     MapRange(Iterator begin_, Iterator end_) : begin(begin_), end(end_) {}
 };
 
-template <class Iterator>
-std::ostream &
-operator<<(std::ostream &os, const AsJSON<MapRange<Iterator> > &range) {
+template <class Out, class Iterator>
+Out &
+operator<<(Out &os, const AsJSON<MapRange<Iterator> > &range) {
     os << "{";
     for (Iterator item = range.value->begin; item != range.value->end; ++item)
         os << (item == range.value->begin ? "" : ", ") << field(item->first, item->second);
@@ -548,9 +549,9 @@ struct ListRange {
 template <class Iterator>
 ListRange<Iterator> array(const Iterator &begin, const Iterator &end) { return ListRange<Iterator>(begin, end); }
 
-template <typename Iter>
-static inline typename std::ostream &
-operator<<(std::ostream &os, const AsJSON<ListRange<Iter> > &f)
+template <typename Out, typename Iter>
+static inline Out &
+operator<<(Out &os, const AsJSON<ListRange<Iter> > &f)
 {
     os << "[";
     for (Iter i = f.value->begin; i != f.value->end; ++i) {
@@ -562,22 +563,21 @@ operator<<(std::ostream &os, const AsJSON<ListRange<Iter> > &f)
 }
 
 // Easy access to array printing for lists, vectors and maps.
-template <typename Item>
-static inline typename std::ostream &
-operator<<(std::ostream &os, const AsJSON<std::list<Item> > &f)
+template <typename Out, typename Item>
+static inline Out &
+operator<<(Out &os, const AsJSON<std::list<Item> > &f)
 {
     return os << JSON::print(array(f.value->begin(), f.value->end()));
 }
 
-template <typename Item>
-static inline typename std::ostream &
-operator<<(std::ostream &os, const AsJSON<std::vector<Item> > &f)
+template <typename Out, typename Item> Out &
+operator<<(Out &os, const AsJSON<std::vector<Item> > &f)
 {
     return os << JSON::print(array(f.value->begin(), f.value->end()));
 }
 
-long
-printBits(std::ostream &os, long number, long exponent)
+template <typename Out> long
+printBits(Out &os, long number, long exponent)
 {
     if (number == 0)
         return exponent - 1;
@@ -589,51 +589,30 @@ printBits(std::ostream &os, long number, long exponent)
     return longest;
 }
 
-static inline std::ostream &
-operator << (std::ostream &os, const AsJSON<Number> &number) {
-    static unsigned long pow10[] = {
-        1UL,
-        10UL,
-        100UL,
-        1000UL,
-        10000UL,
-        100000UL,
-        1000000UL,
-        10000000UL,
-        100000000UL,
-        1000000000UL,
-        10000000000UL,
-        100000000000UL,
-        1000000000000UL,
-        10000000000000UL,
-        100000000000000UL,
-        1000000000000000UL,
-        10000000000000000UL,
-        100000000000000000UL,
-        1000000000000000000UL
-    };
+template <typename Out> Out &
+operator << (Out &os, const AsJSON<Number> &number) {
+
     auto mantissa = number.value->mantissa;
     if (mantissa == 0)
-        return os << 0;
+        return os << '0';
     if (mantissa < 0) {
         os << "-";
         mantissa = -mantissa;
     }
-
     auto longest = printBits(os, mantissa, number.value->exponent);
     if (number.value->exponent != 0 && (longest < 0) == (number.value->exponent < 0))
         os << "e" << number.value->exponent;
     return os;
 }
 
-std::ostream &
-operator << (std::ostream &os, const AsJSON<Null> &null) {
+template <typename Out> Out &
+operator << (Out &os, const AsJSON<Null> &null) {
     os << "null";
 }
 
 
-template <class Value, class Key> std::ostream &
-operator<<(std::ostream &os, const AsJSON<std::map<Key, Value> > &map)
+template <typename Out, class Value, class Key> Out &
+operator<<(Out &os, const AsJSON<std::map<Key, Value> > &map)
 { return os << JSON::print(MapRange<typename std::map<Key, Value>::const_iterator>(map.value->begin(), map.value->end())); }
 
 } // End of Namespace JSON
