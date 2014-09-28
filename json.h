@@ -3,6 +3,7 @@
 #define PME_JSON_H
 
 #include <cctype>
+#include <iostream>
 #include <cmath>
 #include <sstream>
 #include <iomanip>
@@ -575,6 +576,19 @@ operator<<(std::ostream &os, const AsJSON<std::vector<Item> > &f)
     return os << JSON::print(array(f.value->begin(), f.value->end()));
 }
 
+long
+printBits(std::ostream &os, long number, long exponent)
+{
+    if (number == 0)
+        return exponent - 1;
+    auto longest = printBits(os, number / 10, exponent + 1);
+    auto myDigit = number % 10;
+    if (exponent == -1)
+        os << ".";
+    os << myDigit;
+    return longest;
+}
+
 static inline std::ostream &
 operator << (std::ostream &os, const AsJSON<Number> &number) {
     static unsigned long pow10[] = {
@@ -598,10 +612,17 @@ operator << (std::ostream &os, const AsJSON<Number> &number) {
         100000000000000000UL,
         1000000000000000000UL
     };
-    os << number.value->mantissa;
-    if (number.value->exponent) {
-        os << "e" << number.value->exponent;
+    auto mantissa = number.value->mantissa;
+    if (mantissa == 0)
+        return os << 0;
+    if (mantissa < 0) {
+        os << "-";
+        mantissa = -mantissa;
     }
+
+    auto longest = printBits(os, mantissa, number.value->exponent);
+    if (number.value->exponent != 0 && (longest < 0) == (number.value->exponent < 0))
+        os << "e" << number.value->exponent;
     return os;
 }
 
