@@ -3,9 +3,8 @@
 #define PME_JSON_H
 
 #include <cctype>
-#include <iostream>
-#include <cmath>
 #include <sstream>
+#include <cmath>
 #include <iomanip>
 #include <map>
 #include <vector>
@@ -192,19 +191,21 @@ struct UTF8 {
             code = (code << 6) | (c & 0x3f);
         }
         // All unicode characters are output as \u escapes.
-    }};
+    }
+    operator std::string();
+};
 
 
-template <typename Out> Out &
-operator<<(Out &os, const UTF8 &utf)
+UTF8::operator std::string()
 {
-    if ((utf.code & 0x7f) == utf.code) {
-        os.put(char(utf.code));
-        return os;
+    std::string out;
+    if ((code & 0x7f) == code) {
+        out.push_back(char(code));
+        return out;
     }
     uint8_t prefixBits = 0x80; // start with 100xxxxx
     int byteCount = 0; // one less than entire bytecount of encoding.
-    unsigned long value = utf.code;
+    unsigned long value = code;
 
     for (size_t mask = 0x7ff;; mask = mask << 5 | 0x1f) {
         prefixBits = prefixBits >> 1 | 0x80;
@@ -212,45 +213,45 @@ operator<<(Out &os, const UTF8 &utf)
         if ((value & mask) == value)
             break;
     }
-    os << char(value >> 6 * byteCount | prefixBits);
+    out.push_back(char(value >> 6 * byteCount | prefixBits));
     while (byteCount--)
-        os.put(char((value >> 6 * byteCount  & ~0xc0) | 0x80));
-    return os;
+        out.push_back(char((value >> 6 * byteCount  & ~0xc0) | 0x80));
+    return out;
 }
 
 template <typename In> std::string
 parseString(In &l)
 {
     expectAfterSpace(l, '"');
-    std::ostringstream rv;
+    std::string rv;
     for (;;) {
         char c;
         l.get(c);
         switch (c) {
             case '"':
-                return rv.str();
+                return rv;
             case '\\':
                 l.get(c);
                 switch (c) {
                     case '"':
                     case '\\':
                     case '/':
-                        rv << c;
+                        rv.push_back(c);
                         break;
                     case 'b':
-                        rv << '\b';
+                        rv.push_back('\b');
                         break;
                     case 'f':
-                        rv << '\f';
+                        rv.push_back('\f');
                         break;
                     case 'n':
-                        rv << '\n';
+                        rv.push_back('\n');
                         break;
                     case 'r':
-                        rv << '\r';
+                        rv.push_back('\r');
                         break;
                     case 't':
-                        rv << '\t';
+                        rv.push_back('\t');
                         break;
                     default:
                         throw InvalidJSON(std::string("invalid quoted char '") + c + "'");
@@ -261,13 +262,13 @@ parseString(In &l)
                             l.get(c);
                             codePoint = codePoint * 16 + hexval(c);
                         }
-                        rv << UTF8(codePoint);
+                        rv.append(std::string(UTF8(codePoint)));
                     }
                     break;
                 }
                 break;
             default:
-                rv << c;
+                rv.push_back(c);
                 break;
         }
     }
