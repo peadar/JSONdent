@@ -3,9 +3,7 @@
 #define PME_JSON_H
 
 #include <cctype>
-#include <sstream>
 #include <cmath>
-#include <iomanip>
 #include <map>
 #include <vector>
 #include <list>
@@ -411,11 +409,18 @@ template <typename T> AsJSON<T> print(T *t) { return AsJSON<T>(t); }
 template <typename T> AsJSON<T> print(const T &t) { return AsJSON<T>(&t); }
 template <typename T> AsJSON<T> print(T &t) { return AsJSON<T>(&t); }
 
+
+static inline char
+hexdigit(int i)
+{
+    static const char digits[] = "0123456789abcdef";
+    return digits[i];
+}
+
 // Writes UTF-8 encoded text as a JSON string
 template <typename Out> inline Out &
 writeString(Out &o, const std::string &s)
 {
-    std::ios::fmtflags oldFlags(o.flags());
     o << "\"";
     for (auto i = s.begin(); i != s.end(); ++i) {
         int c;
@@ -431,7 +436,11 @@ writeString(Out &o, const std::string &s)
                 // print characters less than ' ' and > 0x7f as unicode escapes.
                 if (c < 32 || c >= 0x7f) {
                     UTF8 codepoint(i, s.end());
-                    o << "\\u" << std::hex << std::setfill('0') << std::setw(4) << codepoint.code;
+                    o << "\\u"
+                        << hexdigit(codepoint.code / 0x1000 & 0xf)
+                        << hexdigit(codepoint.code / 0x100 & 0xf)
+                        << hexdigit(codepoint.code / 0x10 & 0xf)
+                        << hexdigit(codepoint.code / 0x1 & 0xf);
                 } else {
                     o << (char)c;
                 }
@@ -439,7 +448,6 @@ writeString(Out &o, const std::string &s)
         }
     }
     o << "\"";
-    o.flags(oldFlags);
     return o;
 }
 
@@ -466,12 +474,6 @@ operator << (Out &o, const AsJSON<std::string> &esc)
 {
     return writeString(o, esc.value->c_str());
 }
-
-struct Binary {
-    const unsigned char *data;
-    size_t len;
-    Binary(const void *p, size_t l) : data((const unsigned char *)p), len(l) {}
-};
 
 // A JSON "field" from an object, i.e. a <"name": value> construct
 template <typename F, typename V>
@@ -500,20 +502,6 @@ template <typename Out> Out &operator<<(Out &os, const AsJSON<unsigned> f) { ret
 template <typename Out> Out &operator<<(Out &os, const AsJSON<unsigned long> f) { return os << *f.value; }
 template <typename Out> Out &operator<<(Out &os, const AsJSON<unsigned char> f) { return os << *f.value; }
 template <typename Out> Out &operator<<(Out &os, const AsJSON<unsigned long long> f) { return os << *f.value; }
-
-template <typename Out> Out &
-operator<<(Out &os, const Binary &bin) {
-    std::ios_base::fmtflags flags = os.flags();
-    for (size_t i = 0; i < bin.len; ++i)
-        os << std::hex << std::setfill('0') << std::setw(2) << unsigned(bin.data[i]);
-    os.flags(flags);
-    return os;
-}
-
-template <typename Out> Out &
-operator<<(Out &os, const AsJSON<Binary> &f) {
-    return os << '"' << *f.value << '"';
-}
 
 /* Print a pointer as if it was the item it points to. */
 template <typename Out, typename T> 
