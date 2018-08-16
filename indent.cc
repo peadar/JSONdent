@@ -77,7 +77,7 @@ pretty(istream &i, ostream &o, size_t indent)
 {
     switch (peekType(i)) {
         case Array: prettyArray<numtype>(i, o, indent); return;
-        case Object: prettyObject<numtype>(i, o, indent); return;
+        case Dict: prettyObject<numtype>(i, o, indent); return;
         case String: prettyString(i, o, indent); return;
         case Number: prettyNumber<numtype>(i, o, indent); return;
         case Boolean: prettyBoolean(i, o, indent); return;
