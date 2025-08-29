@@ -7,10 +7,13 @@
 using namespace JSON;
 using namespace std;
 
+
+static int indentLevel = 2;
+
 const char *pad(size_t indent) {
     static size_t maxindent = 8192;
     static const char *spaces = strdup(string(maxindent, ' ').c_str());
-    indent = min(4 * indent, maxindent);
+    indent = min(indentLevel * indent, maxindent);
     return spaces + maxindent - indent;
 }
 
@@ -89,6 +92,7 @@ pretty(istream &i, ostream &o, size_t indent)
 static int
 usage() {
     clog << "usage: jdent [ -f ] [ files ... ]" << endl;
+    return -1;
 }
 
 static bool doFloat;
@@ -124,9 +128,10 @@ main(int argc, char *argv[])
 {
     cin.tie(0);
     int c;
-    while ((c = getopt(argc, argv, "f")) != -1) {
+    while ((c = getopt(argc, argv, "fi:")) != -1) {
         switch (c) {
             case 'f': doFloat = true; break;
+            case 'i': indentLevel = strtoul(optarg, 0, 0); break;
             default: return usage();
         }
     }
